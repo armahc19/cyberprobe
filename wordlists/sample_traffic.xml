@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!DOCTYPE items [
+<!ELEMENT items (item*)>
+<!ELEMENT item (url, method, path, request, status)>
+]>
+<items burpVersion="2024.1">
+  <item>
+    <url><![CDATA[https://lab.example/api/orders?id=1001]]></url>
+    <host>lab.example</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[GET]]></method>
+    <path><![CDATA[/api/orders?id=1001]]></path>
+    <request base64="false"><![CDATA[GET /api/orders?id=1001 HTTP/1.1
+Host: lab.example
+Cookie: session=alice_token
+Accept: application/json
+
+]]></request>
+    <status>200</status>
+  </item>
+  <item>
+    <url><![CDATA[https://lab.example/api/login]]></url>
+    <host>lab.example</host>
+    <port>443</port>
+    <protocol>https</protocol>
+    <method><![CDATA[POST]]></method>
+    <path><![CDATA[/api/login]]></path>
+    <request base64="false"><![CDATA[POST /api/login HTTP/1.1
+Host: lab.example
+Content-Type: application/json
+Content-Length: 40
+
+{"username":"demo","password":"demo"}]]></request>
+    <status>401</status>
+  </item>
+</items>

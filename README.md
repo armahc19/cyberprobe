@@ -1,0 +1,218 @@
+# Beginner Cybersecurity Assistant (MVP)
+
+A CLI chat agent that runs approved nmap scans, Linux host inspection
+commands, and file forensics tools, then explains the results in plain
+language for someone with zero security background.
+
+## Installation
+
+CyberProbe runs on Linux with Python 3.10 or newer. Clone the repository and
+create an isolated virtual environment:
+
+```bash
+git clone https://github.com/YOUR-USERNAME/CyberProbe.git
+cd CyberProbe
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+On the first run, paste a Groq API key when prompted. Get one from
+https://console.groq.com. CyberProbe stores it locally in
+`~/.cyberprobe_groq_api_key` with restricted permissions.
+
+Check available system tools from the CyberProbe prompt:
+
+```text
+check setup
+install nmap
+```
+
+Installation always displays the exact package-manager command and asks for
+confirmation before using `sudo`. It supports `apt`, `dnf`, and `pacman`; it
+does not execute arbitrary package names or shell commands.
+
+If a tool is missing, install one of CyberProbe's approved packages:
+
+```text
+cyberprobe> install nmap
+```
+
+The installer supports `apt`, `dnf`, and `pacman`, shows the command, and asks
+for confirmation before using `sudo`.
+
+## Quick start
+
+```text
+cyberprobe> help
+cyberprobe> show listening ports
+cyberprobe> analyze this file /path/to/evidence.bin
+cyberprobe> check setup
+```
+
+## What it can do
+
+The Recon Agent uses named capabilities from a fixed allowlist and never
+constructs raw shell commands. Capabilities include:
+
+- Host discovery with `nmap` and `arp-scan`
+- IP and DNS resolution with Python socket, `getent`, `dig`, `host`, and `nslookup`
+- Common, full-TCP, and selected-port scans with `nmap`
+- Service, version, banner, and OS detection with `nmap` and netcat
+- HTTP headers, methods, technologies, and resources with `curl`, WhatWeb, and nmap NSE
+- SSH, FTP, SMB, and HTTP service enumeration
+
+If a scan needs root, the agent asks for your explicit yes/no
+confirmation in the terminal, then runs `sudo nmap ...` directly --
+sudo prompts you for your password itself. The script never sees or
+stores your password.
+
+The Linux System Agent can run a fixed allowlist of Linux inspection tools
+for system information, processes, storage, users, permissions, services,
+networking, logs, and health checks. It does not build raw shell commands.
+
+The Terminal Operations Agent gives the companion a controlled way to work
+with the local Linux shell. It understands navigation, listing and searching,
+file creation/copy/move/removal/editing, package management, permissions,
+processes, and services. Read-only operations run through an allowlist; every
+change such as `rm`, `apt install`, `chmod`, `kill`, or stopping a service
+shows the exact command and requires confirmation. It never runs arbitrary
+shell strings or pipelines.
+
+The Forensics Agent supports file and forensic-image analysis:
+
+- File identification, metadata, hashing, readable strings, and embedded-file carving
+- Memory-image analysis and memory strings
+- Disk partition and filesystem inspection
+- Recursive filesystem entry listing, data carving, and deleted-file recovery
+
+All inputs are staged and hashed before analysis. Carved and recovered files are
+written to separate folders under `~/forensics_evidence`; the original input is
+not modified.
+
+The Defensive Security Agent performs read-only local defensive analysis:
+
+- System and authentication log review
+- Failed-login, process, service, connection, and listening-port investigation
+- Firewall, audit, scheduled-task, and service posture checks
+- File metadata and SHA-256 evidence checks
+- Threat-detection, threat-hunting, IOC, incident-investigation, and remediation guidance
+
+Ask `investigate this Linux host for suspicious activity` to collect a bounded
+defensive snapshot across logs, authentication, processes, services, network
+connections, firewall state, scheduled tasks, and audit status. The agent
+correlates the results into observations, findings, evidence, severity,
+confidence, and recommended next steps.
+
+The first defensive version does not change firewall rules, isolate hosts,
+kill processes, delete or quarantine files, disable accounts, or run arbitrary
+commands. It prepares evidence and recommendations for those response actions.
+
+The Web Security Agent performs web application security testing using
+bug bounty methodology:
+
+- **Recon**: subdomains (subfinder), directories (gobuster), API paths (ffuf)
+- **Passive**: headers, cookies, CORS, TLS, robots.txt, technology fingerprint
+- **Input probes**: GET query, POST form, and POST JSON reflection/SQL/XSS detection (candidates only)
+- **Burp HAR/XML import**: `analyze_traffic_file`, `analyze_burp_xml_file`, `har_automated_probes`
+- **Burp proxy routing**: set `use_burp_proxy=true` to send checks through `127.0.0.1:8080`
+- **IDOR testing**: `idor_dual_session_check` with two session cookies
+- **Deeper hunting**: `nuclei_web_scan` with web template tags
+- **Lab exploit PoC** (gated): `lab_exploit_poc` with terminal confirmation
+
+Export from Burp: Proxy → HTTP history → Save items → HAR. Then ask CyberProbe:
+`analyze this HAR file /path/to/export.har`
+
+POST/JSON probe examples:
+`run post_json_sql_error on https://lab/api/user parameter id`
+
+Trigger a phased workflow with: `full web assessment on https://your-lab-target`
+
+Optional tools: `gobuster`, `ffuf`, `subfinder`, `whatweb` (install as needed;
+`check setup` shows availability).
+
+## Terminal companion
+
+Inside CyberProbe, run `deploy terminal companion` and confirm the installation.
+After opening a new Bash or Zsh terminal, both forms are available:
+
+```text
+$ analyze this file sample.pdf
+$ cyberprobe analyze this file sample.pdf
+```
+
+The companion forwards natural-language requests to the same Orchestrator and
+specialist agents. Real commands remain normal shell commands. The companion
+does not automatically capture or upload output from every command; use an
+explicit request such as `cyberprobe explain the output of nmap 127.0.0.1` or
+the main CyberProbe shell when you want an explanation.
+
+The hook is visible in `~/.bashrc` or `~/.zshrc`, can be removed manually using
+the CyberProbe companion markers, and requires a new terminal after deployment.
+
+Terminal changes are blocked by default. Enable them explicitly in the current
+shell with `cyberprobe auth on`; use `cyberprobe auth off` to block them again
+and `cyberprobe auth status` to check the state. The authorization applies only
+to CyberProbe's fixed terminal-operation allowlist, not arbitrary shell commands.
+
+Temporarily disable the companion itself with `cyberprobe companion off`,
+re-enable it with `cyberprobe companion on`, and check it with
+`cyberprobe companion status`. Re-run `deploy terminal companion` after updates;
+it refreshes the existing shell hook instead of leaving an old copy in place.
+
+## Safety guardrails in this MVP
+
+- **Authorization**: only scan or test systems you own or have explicit
+  permission to assess. CyberProbe accepts any valid IP, hostname, or URL.
+- **Scan allowlist**: the LLM picks from fixed check types, never raw
+  flags or a free-form command string.
+- **Timeouts**: every scan is capped (default 10 minutes) so nothing
+  can hang forever.
+- **No password handling**: root scans go through `sudo`'s own secure
+  prompt, never through the Python code.
+- **Saved API key**: the Groq API key is stored locally in
+  `~/.cyberprobe_groq_api_key` after the first entry so later runs start
+  immediately.
+
+## Project structure
+
+```
+main.py              CLI entry point / chat loop
+orchestrator.py      Routes user intent to specialist agents
+recon_agent.py       Network recon specialist
+web_security_agent.py Web application security specialist
+forensics_agent.py   File forensics specialist (exiftool/binwalk/etc.)
+linux_agent.py       Linux host inspection specialist
+terminal_agent.py    Controlled terminal operations specialist
+defensive_agent.py   Defensive monitoring and incident investigation specialist
+security_tools.py    Target validation + recon execution
+web_security_tools.py Web security allowlist + execution
+forensics_tools.py   File staging + forensics tool execution
+linux_tools.py       Linux command allowlist + execution
+terminal_tools.py    Terminal operation allowlist + execution
+defensive_tools.py   Defensive command allowlist + execution
+terminal_companion.py Bash/Zsh terminal companion deployment and bridge
+tool_installer.py    Approved system-tool installation
+llm_config.py        Shared Groq client and model config
+logger.py            JSONL session logging
+requirements.txt
+```
+
+## Architecture
+
+```
+CYBERPROBE
+    │
+ORCHESTRATOR
+    │
+┌───┴───────────┐
+▼               ▼
+RECON AGENT     FORENSICS AGENT
+    │               │
+    ▼               ▼
+security_tools   forensics_tools
+    │               │
+  nmap         file/exiftool/binwalk/strings/sha256sum
+```
+# cyberprobe
