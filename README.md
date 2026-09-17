@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="assets/logo.png" width="250">
+</p>
+
+<h1 align="center">CyberProbe</h1>
+
+<p align="center">
+  Your Linux & Cybersecurity Assistant
+</p>
+
+
 # Beginner Cybersecurity Assistant (MVP)
 
 A CLI chat agent that runs approved nmap scans, Linux host inspection
