@@ -7,6 +7,7 @@ import re
 import shlex
 import shutil
 import subprocess
+from pathlib import Path
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+@:/=-]*$")
 MAX_OUTPUT = 12000
@@ -21,6 +22,9 @@ OPERATIONS = {
     "head": "Read the beginning of a text file.",
     "tail": "Read the end of a text file.",
     "find": "Search for files and folders by name.",
+    "find_files": "Find files by pattern and list their paths.",
+    "latest_file": "Find the newest matching file and report its size.",
+    "largest_files": "Find the largest files under a directory and report their sizes.",
     "grep": "Search text in a file.",
     "locate": "Search the system file index.",
     "which": "Find an executable in PATH.",
@@ -30,6 +34,7 @@ OPERATIONS = {
     "touch": "Create an empty file.",
     "cp": "Copy a file or directory.",
     "mv": "Move or rename a file or directory.",
+    "move_matching_files": "Move matching files into a directory.",
     "rm": "Delete a file or directory.",
     "rmdir": "Remove an empty directory.",
     "write_file": "Create or replace a text file with supplied content.",
@@ -48,9 +53,10 @@ OPERATIONS = {
     "kill": "Send a signal to a process.",
     "systemctl": "Inspect or manage a systemd service.",
     "service": "Inspect or manage a service.",
+    "disk_usage": "Report free space and filesystem usage.",
 }
 
-MUTATING = {"mkdir", "touch", "cp", "mv", "rm", "rmdir", "write_file", "apt_update", "apt_install", "apt_remove", "chmod", "chown", "chgrp", "kill"}
+MUTATING = {"mkdir", "touch", "cp", "mv", "move_matching_files", "rm", "rmdir", "write_file", "apt_update", "apt_install", "apt_remove", "chmod", "chown", "chgrp", "kill"}
 
 
 def authorization_enabled() -> bool:
@@ -107,6 +113,27 @@ def run_terminal_operation(operation: str, *, path: str | None = None, destinati
         return {"operation": operation, **_run(command)}
     if operation == "find":
         return {"operation": operation, **_run(["find", _path(target or "."), "-maxdepth", "3", "-iname", _value(pattern or "*", "search pattern")])}
+    if operation in {"find_files", "latest_file", "largest_files"}:
+        root = Path(_path(target or "."))
+        search_pattern = _value(pattern or "*", "search pattern")
+        if not root.is_dir():
+            return {"operation": operation, "command": f"find {root}", "returncode": 1, "stdout": "", "stderr": f"Directory not found: {root}"}
+        matches = sorted(
+            (item for item in root.rglob(search_pattern) if item.is_file()),
+            key=lambda item: str(item),
+        )[:500]
+        if operation == "largest_files":
+            matches.sort(key=lambda item: item.stat().st_size, reverse=True)
+            limit = max(1, min(int(destination or "5"), 50))
+            output = "\n".join(f"{item}\t{item.stat().st_size} bytes" for item in matches[:limit])
+            return {"operation": operation, "command": f"find {root} -type f", "returncode": 0, "stdout": output or "No files found.", "stderr": ""}
+        if operation == "latest_file":
+            matches.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+            if not matches:
+                return {"operation": operation, "command": f"find {root} -iname {search_pattern}", "returncode": 0, "stdout": "No matching files found.", "stderr": ""}
+            newest = matches[0]
+            return {"operation": operation, "command": f"find {root} -iname {search_pattern}", "returncode": 0, "stdout": f"{newest}\t{newest.stat().st_size} bytes", "stderr": ""}
+        return {"operation": operation, "command": f"find {root} -iname {search_pattern}", "returncode": 0, "stdout": "\n".join(str(item) for item in matches) or "No matching files found.", "stderr": ""}
     if operation == "grep":
         return {"operation": operation, **_run(["grep", "-n", "-I", "--", _value(pattern, "search text"), _path(target, "file path")])}
     if operation == "locate":
@@ -117,6 +144,21 @@ def run_terminal_operation(operation: str, *, path: str | None = None, destinati
         command = [operation, "-p", _path(target, "path")] if operation == "mkdir" else [operation, _path(target, "file path")]
     elif operation in {"cp", "mv"}:
         command = [operation, "-r", _path(target, "source path"), _path(destination, "destination path")]
+    elif operation == "move_matching_files":
+        source = Path(_path(target, "source directory"))
+        target_directory = Path(_path(destination, "destination directory"))
+        search_pattern = _value(pattern or "*", "search pattern")
+        files = [item for item in source.glob(search_pattern) if item.is_file()]
+        display = f"move {search_pattern} from {source} to {target_directory} ({len(files)} matching files)"
+        if not source.is_dir():
+            return {"operation": operation, "command": display, "returncode": 1, "stdout": "", "stderr": f"Source directory not found: {source}"}
+        if not target_directory.is_dir():
+            return {"operation": operation, "command": display, "returncode": 1, "stdout": "", "stderr": f"Destination directory not found: {target_directory}"}
+        if not authorization_enabled():
+            return {"operation": operation, "command": display, "returncode": 4, "stdout": "", "stderr": "Authorization is OFF. Run 'auth on' before allowing terminal changes.", "authorization_required": True}
+        for item in files:
+            shutil.move(str(item), str(target_directory / item.name))
+        return {"operation": operation, "command": display, "returncode": 0, "stdout": f"Moved {len(files)} file(s) to {target_directory}.", "stderr": ""}
     elif operation in {"rm", "rmdir"}:
         command = [operation, "-r", _path(target, "path")] if operation == "rm" else [operation, _path(target, "directory path")]
     elif operation == "write_file":
@@ -138,6 +180,8 @@ def run_terminal_operation(operation: str, *, path: str | None = None, destinati
             command = ["htop", "-b", "-n", "1"]
         else:
             command = ["top", "-b", "-n", "1"]
+    elif operation == "disk_usage":
+        command = ["df", "-hP"]
     elif operation == "kill":
         process_id = _name(pid, "process ID")
         if not process_id.isdigit():

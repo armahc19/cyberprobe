@@ -91,6 +91,11 @@ change such as `rm`, `apt install`, `chmod`, `kill`, or stopping a service
 shows the exact command and requires confirmation. It never runs arbitrary
 shell strings or pipelines.
 
+Terminal requests use a structured plan: the LLM maps natural language to
+approved operations and parameters, the Terminal Agent validates that plan,
+and the executor builds the command locally. User wording is not hardcoded as
+individual command phrases, and model-generated shell text is never executed.
+
 The Forensics Agent supports file and forensic-image analysis:
 
 - File identification, metadata, hashing, readable strings, and embedded-file carving
@@ -154,18 +159,36 @@ $ cyberprobe analyze this file sample.pdf
 ```
 
 The companion forwards natural-language requests to the same Orchestrator and
-specialist agents. Real commands remain normal shell commands. The companion
-does not automatically capture or upload output from every command; use an
-explicit request such as `cyberprobe explain the output of nmap 127.0.0.1` or
-the main CyberProbe shell when you want an explanation.
+specialist agents. Real commands remain normal shell commands. For CyberProbe
+terminal actions, the companion captures the command status and prints a short
+plan/results explanation after execution. It does not automatically capture
+ordinary shell commands you type yourself; use an explicit request such as
+`cyberprobe explain the output of nmap 127.0.0.1` or the main CyberProbe shell
+when you want an explanation for those.
+
+For local terminal operations, the companion now proposes the exact shell
+action and asks before running it in the current shell:
+
+```text
+$ cyberprobe go to Documents and list what is there
+Proposed terminal action:
+cd -- /home/you/Documents
+ls -la -- /home/you/Documents
+
+Run? [y/N]
+```
+
+Approving the action with `y` means stateful shell operations such as `cd`
+affect the terminal you are using, not a Python child subprocess. After the
+raw command output, CyberProbe prints a summary showing the command, return
+code, what completed, and what failed.
 
 The hook is visible in `~/.bashrc` or `~/.zshrc`, can be removed manually using
 the CyberProbe companion markers, and requires a new terminal after deployment.
 
-Terminal changes are blocked by default. Enable them explicitly in the current
-shell with `cyberprobe auth on`; use `cyberprobe auth off` to block them again
-and `cyberprobe auth status` to check the state. The authorization applies only
-to CyberProbe's fixed terminal-operation allowlist, not arbitrary shell commands.
+Terminal changes from the shell companion require a per-action `Run? [y/N]`
+approval. The older `cyberprobe auth on/off/status` switch is still available
+for terminal operations that run inside the main CyberProbe app process.
 
 Temporarily disable the companion itself with `cyberprobe companion off`,
 re-enable it with `cyberprobe companion on`, and check it with
