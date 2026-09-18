@@ -53,6 +53,54 @@ cyberprobe> install nmap
 The installer supports `apt`, `dnf`, and `pacman`, shows the command, and asks
 for confirmation before using `sudo`.
 
+## Install on Windows 11 with Kali WSL
+
+CyberProbe is designed for a Linux shell. On Windows 11, the recommended path is
+to run it inside Kali Linux on WSL.
+
+From Windows PowerShell, install Kali WSL:
+
+```powershell
+wsl --install -d kali-linux
+```
+
+Open Kali Linux, then install the basic dependencies and clone CyberProbe:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
+git clone https://github.com/YOUR-USERNAME/CyberProbe.git
+cd CyberProbe
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+On the first run, paste your Groq API key when prompted. CyberProbe saves it in
+your Kali home directory at `~/.cyberprobe_groq_api_key`.
+
+Optional: enable the terminal companion from inside CyberProbe:
+
+```text
+deploy terminal companion
+```
+
+Then close and reopen Kali. You can use:
+
+```bash
+cyberprobe help
+cyberprobe list all files in home
+```
+
+WSL note: Kali's Linux home folder is separate from your Windows user folder.
+Your Linux files live under paths such as `~/Documents`. Your Windows files are
+usually available under `/mnt/c/Users/<WindowsUsername>/`, for example:
+
+```bash
+ls -la /mnt/c/Users/<WindowsUsername>/Desktop
+```
+
 ## Quick start
 
 ```text
