@@ -76,9 +76,74 @@ def _name(value: str | None, label: str = "name") -> str:
     return value
 
 
+def _is_wsl() -> bool:
+    try:
+        version = Path("/proc/version").read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        version = ""
+    return "microsoft" in version or "wsl" in version or Path("/mnt/c/Users").is_dir()
+
+
+def _windows_user_dirs() -> list[Path]:
+    users_root = Path("/mnt/c/Users")
+    if not users_root.is_dir():
+        return []
+    ignored = {"all users", "default", "default user", "public"}
+    candidates = [
+        item for item in users_root.iterdir()
+        if item.is_dir() and item.name.lower() not in ignored and not item.name.startswith(".")
+    ]
+    linux_user = os.environ.get("USER", "").lower()
+    candidates.sort(key=lambda item: (item.name.lower() != linux_user, item.name.lower()))
+    return candidates
+
+
+def resolve_user_path(value: str) -> str:
+    """Resolve common Linux folders to Windows folders when running under WSL."""
+    expanded = Path(os.path.abspath(os.path.expanduser(value)))
+    if expanded.exists() or not _is_wsl():
+        return str(expanded)
+
+    home = Path.home()
+    try:
+        relative = expanded.relative_to(home)
+    except ValueError:
+        return str(expanded)
+
+    if not relative.parts:
+        return str(expanded)
+
+    folder_map = {
+        "desktop": "Desktop",
+        "documents": "Documents",
+        "downloads": "Downloads",
+    }
+    special_folder = folder_map.get(relative.parts[0].lower())
+    if not special_folder:
+        return str(expanded)
+
+    remainder = Path(*relative.parts[1:]) if len(relative.parts) > 1 else Path()
+    existing_folder_matches = []
+    parent_matches = []
+    for user_dir in _windows_user_dirs():
+        windows_folder = user_dir / special_folder
+        if not windows_folder.exists():
+            continue
+        candidate = windows_folder / remainder
+        if candidate.exists():
+            existing_folder_matches.append(candidate)
+        elif candidate.parent.exists():
+            parent_matches.append(candidate)
+
+    matches = existing_folder_matches or parent_matches
+    if len(matches) == 1:
+        return str(matches[0])
+    return str(expanded)
+
+
 def _path(value: str | None, label: str = "path") -> str:
     value = _value(value, label)
-    return os.path.abspath(os.path.expanduser(value))
+    return resolve_user_path(value)
 
 
 def _run(command: list[str], timeout: int = 120) -> dict:

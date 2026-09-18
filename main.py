@@ -139,6 +139,8 @@ def print_help():
   deploy terminal companion   Enable requests from Bash/Zsh terminals
   companion on/off/status     Enable, disable, or check the companion
   auth on/off/status          Allow or block terminal changes
+  observe on/off/status       Capture terminal output for explain (companion shell)
+  explain                     Explain last captured output (companion shell)
   change_key                  Replace the saved Groq API key
   reset_key                   Remove the saved Groq API key
   guided on/off               Toggle suggested next steps
@@ -147,6 +149,9 @@ def print_help():
 Terminal companion examples:
   $ cyberprobe analyze this file sample.pdf
   $ analyze this file sample.pdf
+  $ cyberprobe observe on
+  $ ping 8.8.8.8
+  $ cyberprobe explain
   $ cyberprobe auth on
   $ cyberprobe create a folder called games on Desktop
   $ cyberprobe auth off
@@ -373,6 +378,19 @@ def main():
                 os.environ.pop("CYBERPROBE_AUTH", None)
             state = "ON" if os.environ.get("CYBERPROBE_AUTH") == "1" else "OFF"
             print(f"\nCyberProbe terminal authorization: {state}\n")
+            continue
+        if user_input.lower() in {"observe on", "observe off", "observe status"}:
+            print(
+                "\nObserve and explain run in your Bash/Zsh terminal after "
+                "`deploy terminal companion`.\n"
+                "In that terminal use: cyberprobe observe on → run a command → cyberprobe explain\n"
+            )
+            continue
+        if user_input.lower() == "explain":
+            print(
+                "\n`explain` works in your Bash/Zsh terminal after `cyberprobe observe on` "
+                "and a captured command.\nUse: cyberprobe explain\n"
+            )
             continue
         if user_input.lower() in {"companion on", "companion off", "companion status"}:
             companion_command = user_input.lower().split()[1]

@@ -101,6 +101,10 @@ usually available under `/mnt/c/Users/<WindowsUsername>/`, for example:
 ls -la /mnt/c/Users/<WindowsUsername>/Desktop
 ```
 
+When a common Linux folder such as `~/Desktop`, `~/Documents`, or `~/Downloads`
+does not exist in Kali WSL, CyberProbe tries to use the matching Windows folder
+automatically when exactly one clear match is available.
+
 ## Quick start
 
 ```text
@@ -209,10 +213,23 @@ $ cyberprobe analyze this file sample.pdf
 The companion forwards natural-language requests to the same Orchestrator and
 specialist agents. Real commands remain normal shell commands. For CyberProbe
 terminal actions, the companion captures the command status and prints a short
-plan/results explanation after execution. It does not automatically capture
-ordinary shell commands you type yourself; use an explicit request such as
-`cyberprobe explain the output of nmap 127.0.0.1` or the main CyberProbe shell
-when you want an explanation for those.
+plan/results explanation after execution.
+
+**Observe and explain** (for commands you paste yourself, such as `ping` or
+`curl`):
+
+```text
+$ cyberprobe observe on
+$ ping 8.8.8.8
+$ cyberprobe explain
+```
+
+- `observe on/off/status` — opt-in capture of the **last** command’s output in
+  **this shell tab only** (new tabs start with observe OFF).
+- `explain` — sends that capture to the AI for a plain-language breakdown
+  (long output is processed in sections and combined).
+- Interactive commands (`vim`, `ssh`, `msfconsole`, etc.) are **not** captured.
+- `auth on/off` is separate: it only gates mutating operations, not observe.
 
 For local terminal operations, the companion now proposes the exact shell
 action and asks before running it in the current shell:

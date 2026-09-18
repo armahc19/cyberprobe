@@ -8,7 +8,7 @@ import shlex
 from pathlib import Path
 
 from llm_config import MODEL
-from terminal_tools import OPERATIONS, run_terminal_operation
+from terminal_tools import OPERATIONS, resolve_user_path, run_terminal_operation
 
 PLAN_SYSTEM_PROMPT = f"""You are CyberProbe's terminal intent planner.
 Understand the user's natural-language Linux request and return ONLY valid JSON.
@@ -134,7 +134,7 @@ class TerminalAgent:
 def _quote_path(value: str | None, label: str = "path") -> str:
     if not value or "\x00" in value or len(value) > 4096 or value.startswith("-"):
         raise ValueError(f"A valid {label} is required.")
-    return shlex.quote(os.path.abspath(os.path.expanduser(value)))
+    return shlex.quote(resolve_user_path(value))
 
 
 def _quote_value(value: str | None, label: str = "value") -> str:
@@ -169,7 +169,7 @@ def _step_to_shell_command(step: dict) -> str | None:
     if operation == "pwd":
         return "pwd"
     if operation == "cd":
-        directory = os.path.abspath(os.path.expanduser(path or "."))
+        directory = resolve_user_path(path or ".")
         if not Path(directory).is_dir():
             raise ValueError(f"Directory not found: {directory}")
         return f"cd -- {shlex.quote(directory)}"
