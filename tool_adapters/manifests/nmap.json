@@ -1,0 +1,17 @@
+{
+  "name": "nmap",
+  "version": "7.x",
+  "type": "cli",
+  "capabilities": [
+    "host_discovery",
+    "port_scanning",
+    "service_detection",
+    "os_detection",
+    "script_scanning"
+  ],
+  "inputs": {
+    "target": {"type": "target", "required": true},
+    "ports": {"type": "string", "required": false}
+  },
+  "outputs": ["hosts", "ports", "services", "os", "scripts"]
+}

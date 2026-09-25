@@ -315,3 +315,38 @@ security_tools   forensics_tools
   nmap         file/exiftool/binwalk/strings/sha256sum
 ```
 # cyberprobe
+
+## Today's platform additions
+
+CyberProbe now includes the foundation for coordinated, extensible security
+investigations:
+
+- Structured intent understanding for goals, target types, constraints,
+  priorities, depth, and output style.
+- Investigation planning with create, revise, pause, resume, phase completion,
+  and progress tracking.
+- A task manager with queued, running, completed, failed, and blocked tasks,
+  including dependencies, retries, and error state.
+- A Tool Registry and Tool Adapter system that separates tool capabilities from
+  command construction and parsing.
+- A Tool Engine that selects available tools by capability and provides
+  fallbacks.
+- Adapters for Nmap, Masscan, RustScan, arp-scan, Nuclei, Nikto, HTTPX,
+  WhatWeb, Gobuster, and FFUF.
+- Dependency inventory with executable paths, installed versions, and missing
+  tool detection.
+- Output parsers for Nmap XML, Nuclei JSONL, HTTPX, Nikto, Gobuster, FFUF, and
+  Metasploit-style console output.
+- A shared evidence graph for assets, ports, services, technologies,
+  endpoints, vulnerabilities, findings, and relationships.
+- Cross-tool correlation that merges duplicate findings, combines evidence,
+  tracks source tools, and increases confidence when independent tools agree.
+- Structured investigation events for agent handoffs, task status, tool
+  results, evidence, findings, failures, and coordination history.
+- Shared orchestrator state connecting intent, plans, tasks, evidence, agent
+  outputs, correlation, and reporting.
+
+These additions are an extensible development foundation. The next work is to
+connect every specialist agent fully to the task and event systems, improve
+tool-specific parsers with real fixtures, add persistent case storage, expand
+automated tests, and complete end-to-end workflow testing.

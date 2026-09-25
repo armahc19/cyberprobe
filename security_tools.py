@@ -57,6 +57,7 @@ MAX_TIMEOUT_SECONDS = 600
 RECON_CAPABILITIES = {
     "host_discovery_nmap": (["nmap", "-sn"], "Nmap host discovery."),
     "host_discovery_arp_scan": (["arp-scan", "--localnet"], "ARP-based local host discovery."),
+    "host_discovery_fping": (["fping", "-a", "-q"], "Check whether the supplied host responds to ICMP."),
     "resolve_ip_python": (["python3", "-c", "import socket,sys; print(socket.gethostbyname(sys.argv[1]))"], "Resolve a hostname to an IP address."),
     "resolve_ip_getent": (["getent", "hosts"], "Resolve a hostname using the system resolver."),
     "dns_records_dig": (["dig"], "Query DNS records."),
@@ -64,8 +65,11 @@ RECON_CAPABILITIES = {
     "dns_records_nslookup": (["nslookup"], "Query DNS records with nslookup."),
     "common_ports_nmap": (["nmap", "-F"], "Scan common TCP ports."),
     "full_tcp_nmap": (["nmap", "-p-"], "Scan all TCP ports."),
+    "common_ports_masscan": (["masscan", "--top-ports", "100", "--rate", "1000"], "Fast scan of common TCP ports."),
+    "common_ports_naabu": (["naabu", "-top-ports", "100", "-silent"], "Scan common TCP ports with Naabu."),
     "selected_ports_nmap": (["nmap", "-p"], "Scan a caller-selected port list."),
     "service_version_nmap": (["nmap", "-sV"], "Identify services and versions."),
+    "service_identification_httpx": (["httpx", "-silent", "-status-code", "-title", "-tech-detect"], "Identify live HTTP services and technologies."),
     "banner_nmap": (["nmap", "-sV", "--script", "banner"], "Collect service banners with nmap."),
     "banner_netcat": (["nc", "-vz", "-w", "3"], "Attempt a TCP banner connection."),
     "os_detection_nmap": (["nmap", "-O"], "Estimate the target operating system."),
@@ -80,7 +84,11 @@ RECON_CAPABILITIES = {
     "ftp_enum_nmap": (["nmap", "-sV", "--script", "ftp-anon"], "Inspect FTP service exposure."),
     "smb_enum_nmap": (["nmap", "-sV", "--script", "smb-os-discovery"], "Inspect SMB service details."),
     "smb_enum_client": (["smbclient", "-L"], "List SMB shares when permitted."),
+    "smb_enum_enum4linux": (["enum4linux-ng", "-A"], "Enumerate permitted SMB and Windows service details."),
+    "dns_enumeration": (["dnsrecon", "-d"], "Enumerate DNS records for a domain."),
     "http_enum_nmap": (["nmap", "-sV", "--script", "http-title,http-methods"], "Enumerate HTTP service details."),
+    "web_vulnerability_nikto": (["nikto", "-host"], "Run Nikto's non-destructive web server checks."),
+    "vulnerability_nmap_nse": (["nmap", "--script", "vuln"], "Run Nmap's vulnerability NSE scripts."),
 }
 
 

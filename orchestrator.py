@@ -8,6 +8,7 @@ Specialist agents own their tool execution; the orchestrator only routes.
 """
 
 import json
+from datetime import datetime, timezone
 
 from forensics_agent import ForensicsAgent
 from defensive_agent import DefensiveSecurityAgent
@@ -20,15 +21,19 @@ from web_security_agent import WebSecurityAgent
 from vulnerability_agent import VulnerabilityAssessmentAgent
 from report_agent import ReportAgent
 from terminal_agent import TerminalAgent
+from exploitation_agent import ExploitationAgent
+from metasploit_agent import MetasploitAgent
 from session_guide import SessionContext, build_suggestions, extract_url, format_suggestions_menu
+from investigation import EventBus, EvidenceStore, IntentEngine, InvestigationPlanner, InvestigationState, ResultCorrelator, TaskManager
 
-SYSTEM_PROMPT = """You are the Orchestrator for CyberProbe, a beginner-friendly
-cybersecurity assistant. Your job is to understand what the user wants and
-route their request to the right specialist agent.
+SYSTEM_PROMPT = """You are the Orchestrator for CyberProbe, an AI cybersecurity
+assistant. Your job is to understand what the user wants, create a useful plan,
+and route work to the right specialist agent. Adapt the level of explanation
+to the user's apparent experience instead of assuming they are a beginner.
 
-IMPORTANT — Beginner guidance:
-- Assume the user is a complete beginner unless they say otherwise.
-- After delegation, the specialist will explain results in plain language.
+Communication guidance:
+- Explain results clearly, using technical depth appropriate to the user.
+- After delegation, the specialist should explain results and next steps.
 - When you answer directly (no delegation), always end with a section titled
   exactly "## NEXT MOVES" followed by 3–5 numbered, actionable options the
   user can pick on the next turn (short labels they can type or choose by number).
@@ -82,6 +87,11 @@ Routing rules:
 - If the request clearly involves monitoring, suspicious activity, incidents,
   threat hunting, IOCs, firewall review, evidence preservation, or defensive
    posture, delegate to the Defensive Security Agent.
+- If the request explicitly asks to validate an exploit against an authorized
+  lab target, delegate to the Exploitation Agent. It is confirmation-gated and
+  bounded to CyberProbe's approved lab PoCs.
+- If the request explicitly asks to run an approved Metasploit module against
+  an authorized target, delegate to the Metasploit Agent.
 - If the request asks CyberProbe to navigate folders, create/edit/delete files,
   manage packages, permissions, processes, services, or search local files,
   delegate to the Terminal Operations Agent.
@@ -215,6 +225,22 @@ ROUTING_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "delegate_to_metasploit_agent",
+            "description": "Hand off an authorized Metasploit request using only a configured module allowlist and explicit confirmation.",
+            "parameters": {"type": "object", "properties": {"request": {"type": "string"}}, "required": ["request"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_to_exploitation_agent",
+            "description": "Hand off an explicitly authorized lab exploit-validation request to the confirmation-gated Exploitation Agent.",
+            "parameters": {"type": "object", "properties": {"request": {"type": "string"}}, "required": ["request"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "delegate_to_terminal_agent",
             "description": "Hand off local terminal navigation, file operations, package management, permissions, processes, services, and file searching.",
             "parameters": {"type": "object", "properties": {"request": {"type": "string"}}, "required": ["request"]},
@@ -236,8 +262,52 @@ class Orchestrator:
         self.vulnerability_agent = VulnerabilityAssessmentAgent(self.client)
         self.report_agent = ReportAgent(self.client)
         self.terminal_agent = TerminalAgent(self.client)
+        self.exploitation_agent = ExploitationAgent(self.client)
+        self.metasploit_agent = MetasploitAgent(self.client)
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.session = SessionContext()
+        # Shared investigation board. Specialists still own execution, while
+        # the orchestrator owns context, handoffs, and the final synthesis.
+        self.case = {
+            "objective": None,
+            "target": None,
+            "events": [],
+            "agent_outputs": {},
+        }
+        self.intent_engine = IntentEngine()
+        self.planner = InvestigationPlanner()
+        self.investigation = InvestigationState()
+        self.evidence = EvidenceStore()
+        self.correlator = ResultCorrelator()
+        self.tasks = TaskManager()
+        self.events = EventBus()
+
+    def _publish(self, agent: str, request: str, content: str, turn_log: dict | None = None) -> None:
+        """Publish a bounded specialist result to the shared case board."""
+        turn_log = turn_log or {}
+        self.events.publish("agent_completed", agent, request=request[:1000], target=turn_log.get("target"), tool=turn_log.get("scan_type") or turn_log.get("tool_type"), findings=turn_log.get("findings", []), summary=(content or "")[:4000])
+        self.evidence.add(agent=agent, request=request, result=turn_log | {"stdout": content})
+        self.investigation.update(turn_log)
+        self.investigation.findings = self.correlator.correlate(self.evidence.records)
+        self.case["agent_outputs"][agent] = {
+            "summary": (content or "")[:12000],
+            "target": turn_log.get("target"),
+            "tool": turn_log.get("scan_type") or turn_log.get("tool_type"),
+            "findings": turn_log.get("findings", []),
+        }
+        self.case["events"].append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "agent_completed",
+            "agent": agent,
+            "request": request[:1000],
+        })
+
+    def _case_context(self) -> str:
+        """Create concise context for the next specialist handoff."""
+        outputs = []
+        for agent, result in self.case["agent_outputs"].items():
+            outputs.append(f"[{agent}]\n{result['summary'][:5000]}")
+        return "\n\n".join(outputs) or "No previous specialist results."
 
     def _record_turn(self, user_message: str, reply: str, turn_log: dict | None = None) -> None:
         turn_log = turn_log or {}
@@ -279,59 +349,91 @@ class Orchestrator:
         )
 
     def _delegate(self, tool_name: str, request: str) -> tuple[str, dict]:
+        if tool_name == "delegate_to_metasploit_agent":
+            print("\n[Orchestrator → Metasploit Agent]")
+            result = self.metasploit_agent.send(request)
+            self._publish("metasploit", request, *result)
+            return result
+        if tool_name == "delegate_to_exploitation_agent":
+            print("\n[Orchestrator → Exploitation Agent]")
+            result = self.exploitation_agent.send(request)
+            self._publish("exploitation", request, *result)
+            return result
         if tool_name == "delegate_to_terminal_agent":
             print("\n[Orchestrator → Terminal Operations Agent]")
-            return self.terminal_agent.send(request)
+            result = self.terminal_agent.send(request)
+            self._publish("terminal", request, *result)
+            return result
 
         if tool_name == "delegate_to_defensive_security_agent":
             print("\n[Orchestrator → Defensive Security Agent]")
-            return self.defensive_agent.send(request)
+            result = self.defensive_agent.send(request)
+            self._publish("defensive", request, *result)
+            return result
 
         if tool_name == "delegate_to_recon_agent":
             print("\n[Orchestrator → Recon Agent]")
-            return self.recon_agent.send(request)
+            result = self.recon_agent.send(request)
+            self._publish("recon", request, *result)
+            return result
 
         if tool_name == "delegate_to_forensics_agent":
             print("\n[Orchestrator → Forensics Agent]")
-            return self.forensics_agent.send(request)
+            result = self.forensics_agent.send(request)
+            self._publish("forensics", request, *result)
+            return result
 
         if tool_name == "delegate_to_linux_agent":
             print("\n[Orchestrator → Linux System Agent]")
-            return self.linux_agent.send(request)
+            result = self.linux_agent.send(request)
+            self._publish("linux", request, *result)
+            return result
 
         if tool_name == "delegate_to_web_security_agent":
             print("\n[Orchestrator → Web Security Agent]")
-            return self.web_security_agent.send(request)
+            result = self.web_security_agent.send(request)
+            self._publish("web_security", request, *result)
+            return result
 
         if tool_name == "delegate_to_network_security_agent":
             print("\n[Orchestrator → Network Security Agent]")
-            return self.network_security_agent.send(request)
+            result = self.network_security_agent.send(request)
+            self._publish("network_security", request, *result)
+            return result
 
         if tool_name == "delegate_to_vulnerability_assessment_agent":
             print("\n[Orchestrator → Vulnerability Assessment Agent]")
-            return self.vulnerability_agent.send(request)
+            result = self.vulnerability_agent.send(request)
+            self._publish("vulnerability", request, *result)
+            return result
 
         if tool_name == "delegate_to_report_agent":
             print("\n[Orchestrator → Report Agent]")
-            return self.report_agent.send(request)
+            result = self.report_agent.send(request)
+            self._publish("report", request, *result)
+            return result
 
         return f"Internal routing error: unknown delegation '{tool_name}'.", {"agent": "orchestrator"}
 
     def _run_assessment_workflow(self, request: str) -> str:
         """Run the evidence pipeline for an explicit end-to-end assessment."""
-        recon_text, _ = self.recon_agent.send(request)
+        self.case["objective"] = request
+        recon_text, recon_log = self.recon_agent.send(request)
+        self._publish("recon", request, recon_text, recon_log)
         assessment_request = (
             "Assess the following Recon Agent results. Correlate products and "
             "versions with trusted vulnerability intelligence when appropriate. "
-            "Do not treat version matches as confirmation.\n\n" + recon_text
+            "Do not treat version matches as confirmation.\n\n" + self._case_context()
         )
-        vulnerability_text, _ = self.vulnerability_agent.send(assessment_request)
+        vulnerability_text, vulnerability_log = self.vulnerability_agent.send(assessment_request)
+        self._publish("vulnerability", assessment_request, vulnerability_text, vulnerability_log)
         report_request = (
             "Create a prioritized security report from these Recon and "
             "Vulnerability Assessment results. Preserve evidence and confidence.\n\n"
-            "RECON:\n" + recon_text + "\n\nASSESSMENT:\n" + vulnerability_text
+            "CASE COORDINATION BOARD:\n" + self._case_context()
         )
-        report_text, _ = self.report_agent.send(report_request)
+        report_text, report_log = self.report_agent.send(report_request)
+        self._publish("report", report_request, report_text, report_log)
         return report_text
 
     def _run_web_assessment_workflow(self, request: str) -> str:
@@ -357,6 +459,20 @@ class Orchestrator:
 
     def send(self, user_message: str) -> str:
         lowered = user_message.lower()
+        intent = self.intent_engine.understand(user_message, extract_url(user_message))
+        self.investigation.goal = intent.goal
+        self.investigation.target = intent.target
+        self.investigation.target_type = intent.target_type
+        self.investigation.constraints = list(intent.constraints)
+        self.investigation.priority = intent.priority
+        self.investigation.depth = intent.depth
+        plan = self.planner.create(intent)
+        self.planner.start(plan)
+        self.investigation.plan = list(plan.phases)
+        self.investigation.plan_status = plan.status
+        self.investigation.current_phase = plan.current_phase
+        if not self.tasks.tasks:
+            self.tasks.add_plan(plan.phases)
         if any(phrase in lowered for phrase in ("full assessment", "end-to-end assessment", "complete assessment")):
             print("\n[CyberProbe workflow: Recon → Vulnerability Assessment → Report]")
             try:
